@@ -2,9 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, Copy, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { api } from '../api';
 import "./Login.css";
 
-export default function App() {
+export default function App({ onLoginSuccess }) {
   const navigate = useNavigate();
   const [authState, setAuthState] = useState('auth');
   const [isSignup, setIsSignup] = useState(true);
@@ -19,6 +20,8 @@ export default function App() {
   const [finalTeamCode, setFinalTeamCode] = useState('');
   const [enteredCode, setEnteredCode] = useState('');
   const [isCopied, setIsCopied] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [userPortal, setUserPortal] = useState(localStorage.getItem('portal') || null);
 
   // Function to generate the random part of the code
   const generateRandomSegments = useCallback(() => {
@@ -33,29 +36,75 @@ export default function App() {
       // Final code is formed using the selected subteam prefix
       setFinalTeamCode(`ENIG-${formData.subteam}-${baseCode}`);
     } else if (baseCode) {
-        // If subteam is not selected yet, show a placeholder
-        setFinalTeamCode(`ENIG-X-${baseCode}`);
+      // If subteam is not selected yet, show a placeholder
+      setFinalTeamCode(`ENIG-X-${baseCode}`);
     }
   }, [baseCode, formData.subteam]);
 
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isLoading) return;
+
     if (isSignup) {
       // 1. Generate the random part of the code immediately on sign up
       const randomSegments = generateRandomSegments();
       setBaseCode(randomSegments);
-      // 2. Transition to the 'signed-up' state (which now contains the dropdown)
+      // 2. Transition to the 'signed-up' state
       setAuthState('signed-up');
     } else {
-      setAuthState('logged-in');
+      setIsLoading(true);
+      try {
+        // Try login with email and password first
+        const res = await api.post('/auth/login', {
+          email: formData.email.trim().toLowerCase(),
+          password: formData.password,
+        });
+
+        if (res.user.portal) {
+          localStorage.setItem('portal', res.user.portal);
+          setUserPortal(res.user.portal);
+        }
+
+        // Always ask for team code after login as requested
+        localStorage.setItem('token', res.token);
+        localStorage.setItem('user', JSON.stringify(res.user));
+        if (res.team) localStorage.setItem('team', JSON.stringify(res.team));
+
+        setAuthState('logged-in');
+      } catch (err) {
+        console.error(err);
+        alert(err.message || 'Login failed');
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
-  const handleCodeSubmit = (e) => {
+  const handleCodeSubmit = async (e) => {
     e.preventDefault();
-    console.log('Team code entered:', enteredCode);
-    // Here you would verify the code
+    if (isLoading) return;
+    setIsLoading(true);
+    try {
+      // Call Login API
+      const res = await api.post('/auth/login', {
+        email: formData.email.trim().toLowerCase(),
+        password: formData.password,
+        teamCode: enteredCode.trim(),
+      });
+
+      localStorage.setItem('token', res.token);
+      localStorage.setItem('user', JSON.stringify(res.user));
+      if (res.team) localStorage.setItem('team', JSON.stringify(res.team));
+
+      if (onLoginSuccess) onLoginSuccess();
+      navigate('/dashboard');
+    } catch (err) {
+      console.error(err);
+      alert(err.message || 'Login failed');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // UPDATED: Handle change in subteam selection
@@ -68,9 +117,9 @@ export default function App() {
 
   const handleCopyCode = async () => {
     if (finalTeamCode) {
-        await navigator.clipboard.writeText(finalTeamCode);
-        setIsCopied(true);
-        setTimeout(() => setIsCopied(false), 2000);
+      await navigator.clipboard.writeText(finalTeamCode);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
     }
   };
 
@@ -84,13 +133,13 @@ export default function App() {
   const toggleMode = () => {
     setIsSignup(!isSignup);
   };
-  
+
   const subteamName = formData.subteam === 'A' ? 'Cipher' : (formData.subteam === 'B' ? 'Key' : 'Select a Subteam');
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-8 overflow-hidden">
       {/* Animated background grid pattern for sci-fi effect */}
-      <motion.div 
+      <motion.div
         className="fixed inset-0 opacity-10 pointer-events-none"
         animate={{
           opacity: [0.05, 0.15, 0.05],
@@ -153,7 +202,7 @@ export default function App() {
       />
 
       {/* Main authentication panel */}
-      <motion.div 
+      <motion.div
         className="relative w-full max-w-md"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -167,7 +216,7 @@ export default function App() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.2 }}
         >
-          <motion.h1 
+          <motion.h1
             className="text-5xl font-bold text-red-500 tracking-[0.2em]"
             animate={{
               opacity: [0.7, 1, 0.7],
@@ -187,7 +236,7 @@ export default function App() {
           </motion.h1>
         </motion.div>
 
-        <motion.div 
+        <motion.div
           className="relative bg-zinc-900/40 backdrop-blur-xl rounded-2xl p-8 border border-zinc-800/50 shadow-2xl"
           style={{
             boxShadow: '0 0 60px rgba(239, 68, 68, 0.15), 0 0 100px rgba(239, 68, 68, 0.08)'
@@ -209,7 +258,7 @@ export default function App() {
           <div className="flex items-center justify-between mb-8">
             <div className="flex-1">
               <AnimatePresence mode="wait">
-                <motion.h2 
+                <motion.h2
                   key={authState + isSignup.toString()}
                   className="uppercase tracking-wide text-white"
                   initial={{ opacity: 0, x: -10 }}
@@ -217,7 +266,11 @@ export default function App() {
                   exit={{ opacity: 0, x: 10 }}
                   transition={{ duration: 0.3 }}
                 >
-                  {authState === 'signed-up' ? 'Select Subteam' : authState === 'logged-in' ? 'Enter team code' : isSignup ? 'Create account' : 'Sign in'}
+                  {authState === 'signed-up'
+                    ? 'Select Subteam'
+                    : authState === 'logged-in'
+                      ? (userPortal === 'hawkins_lab' ? 'Hawkins Access' : userPortal === 'upside_down' ? 'Void Frequency' : 'Enter team code')
+                      : isSignup ? 'Create account' : 'Sign in'}
                 </motion.h2>
               </AnimatePresence>
             </div>
@@ -249,7 +302,7 @@ export default function App() {
                     {isSignup && (
                       <>
                         {/* Team Name Input */}
-                        <motion.div 
+                        <motion.div
                           className="space-y-2"
                           initial={{ opacity: 0, height: 0 }}
                           animate={{ opacity: 1, height: "auto" }}
@@ -276,7 +329,7 @@ export default function App() {
                   </AnimatePresence>
 
                   {/* Email field */}
-                  <motion.div 
+                  <motion.div
                     className="space-y-2"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -298,7 +351,7 @@ export default function App() {
                   </motion.div>
 
                   {/* Password field */}
-                  <motion.div 
+                  <motion.div
                     className="space-y-2"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -322,19 +375,20 @@ export default function App() {
                   {/* Submit button */}
                   <motion.button
                     type="submit"
-                    className="w-full py-3 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-all duration-300 mt-8 shadow-lg shadow-red-500/20 hover:shadow-red-500/40 hover:shadow-xl"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                    disabled={isLoading}
+                    className={`w-full py-3 text-white rounded-lg transition-all duration-300 mt-8 shadow-lg ${isLoading ? 'bg-zinc-700/50 cursor-not-allowed shadow-none' : 'bg-red-600 hover:bg-red-500 shadow-red-500/20 hover:shadow-red-500/40 hover:shadow-xl'}`}
+                    whileHover={!isLoading ? { scale: 1.02 } : {}}
+                    whileTap={!isLoading ? { scale: 0.98 } : {}}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.3 }}
                   >
-                    {isSignup ? 'Create account' : 'Sign in'}
+                    {isLoading ? 'Processing...' : (isSignup ? 'Create account' : 'Sign in')}
                   </motion.button>
                 </form>
 
                 {/* Footer toggle */}
-                <motion.div 
+                <motion.div
                   className="mt-6 text-center text-zinc-500"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -369,7 +423,7 @@ export default function App() {
 
             {/* Team Code Display (with dropdown) - shown after sign up */}
             {authState === 'signed-up' && (
-              <motion.div 
+              <motion.div
                 key="signed-up"
                 className="space-y-6"
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -377,7 +431,7 @@ export default function App() {
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.4 }}
               >
-                <motion.div 
+                <motion.div
                   className="bg-black/50 border border-red-500/30 rounded-lg p-6 space-y-4"
                   animate={{
                     borderColor: ['rgba(239, 68, 68, 0.3)', 'rgba(239, 68, 68, 0.5)', 'rgba(239, 68, 68, 0.3)'],
@@ -389,9 +443,9 @@ export default function App() {
                   }}
                 >
                   <p className="text-zinc-400">Your account is ready. Select your **Subteam** below to finalize your **Team Code**:</p>
-                  
+
                   {/* NEW: Subteam Dropdown on the signed-up screen */}
-                  <motion.div 
+                  <motion.div
                     className="space-y-2"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -415,20 +469,20 @@ export default function App() {
                       </select>
                       {/* Custom caret for the select input */}
                       <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-zinc-400">
-                          <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                        <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
                       </div>
                     </div>
                   </motion.div>
-                  
+
                   {/* Team Code Display */}
                   <div className="relative">
-                    <motion.div 
+                    <motion.div
                       className={`bg-zinc-950 border rounded-lg p-4 font-mono text-center transition-colors duration-500 ${formData.subteam ? 'border-red-500/50' : 'border-zinc-700/50'}`}
                       initial={{ scale: 0.9, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
                       transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
                     >
-                      <motion.div 
+                      <motion.div
                         className="text-2xl tracking-widest text-red-400"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: [0, 1, 1, 1] }}
@@ -446,7 +500,7 @@ export default function App() {
                         ))}
                       </motion.div>
                     </motion.div>
-                    
+
                     <motion.button
                       type="button"
                       onClick={handleCopyCode}
@@ -481,14 +535,14 @@ export default function App() {
                   </div>
 
                   {/* Indication of the prefix */}
-                  <motion.div 
+                  <motion.div
                     className={`border rounded-lg p-3 transition-colors duration-500 ${formData.subteam ? 'bg-red-950/20 border-red-500/20' : 'bg-yellow-950/20 border-yellow-500/20'}`}
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.7 }}
                   >
                     <p className={`text-sm ${formData.subteam ? 'text-red-400/80' : 'text-yellow-400/80 font-bold'}`}>
-                      {formData.subteam 
+                      {formData.subteam
                         ? `✅ Final Team Code generated. You are Subteam ${formData.subteam} (${subteamName}).`
                         : `⚠️ Select a Subteam above. Your current code prefix is a placeholder (X).`
                       }
@@ -499,16 +553,41 @@ export default function App() {
 
                 <motion.button
                   type="button"
-                  onClick={() => setAuthState('auth')}
-                  disabled={!formData.subteam} // Disable until subteam is selected
-                  className={`w-full py-3 text-white rounded-lg transition-all duration-300 shadow-lg ${formData.subteam ? 'bg-red-600 hover:bg-red-500 shadow-red-500/20 hover:shadow-red-500/40' : 'bg-zinc-700/50 cursor-not-allowed shadow-none'}`}
-                  whileHover={formData.subteam ? { scale: 1.02 } : {}}
-                  whileTap={formData.subteam ? { scale: 0.98 } : {}}
+                  onClick={async () => {
+                    if (isLoading) return;
+                    setIsLoading(true);
+                    try {
+                      // Call Signup API
+                      const res = await api.post('/auth/signup', {
+                        email: formData.email.trim().toLowerCase(),
+                        password: formData.password,
+                        teamName: formData.teamName,
+                        teamCode: finalTeamCode,
+                        // Portal is selected later
+                      });
+
+                      localStorage.setItem('token', res.token);
+                      localStorage.setItem('user', JSON.stringify(res.user));
+                      localStorage.setItem('team', JSON.stringify(res.team));
+
+                      if (onLoginSuccess) onLoginSuccess();
+                      navigate('/dashboard');
+                    } catch (err) {
+                      console.error(err);
+                      alert(err.message || 'Signup failed');
+                    } finally {
+                      setIsLoading(false);
+                    }
+                  }}
+                  disabled={!formData.subteam || isLoading} // Disable until subteam is selected
+                  className={`w-full py-3 text-white rounded-lg transition-all duration-300 shadow-lg ${formData.subteam ? 'bg-red-600 hover:bg-red-500 shadow-red-500/20 hover:shadow-red-500/40' : 'bg-zinc-700/50 cursor-not-allowed shadow-none'} ${isLoading ? 'opacity-70 cursor-wait' : ''}`}
+                  whileHover={formData.subteam && !isLoading ? { scale: 1.02 } : {}}
+                  whileTap={formData.subteam && !isLoading ? { scale: 0.98 } : {}}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 1.3 }}
                 >
-                  {formData.subteam ? 'Continue to dashboard' : 'Select Subteam to Continue'}
+                  {isLoading ? 'Processing...' : (formData.subteam ? 'Continue to dashboard' : 'Select Subteam to Continue')}
                 </motion.button>
               </motion.div>
             )}
@@ -516,7 +595,7 @@ export default function App() {
             {/* Team Code Input - shown after login */}
             {/* ... (Login form unchanged) ... */}
             {authState === 'logged-in' && (
-              <motion.div 
+              <motion.div
                 key="logged-in"
                 className="space-y-6"
                 initial={{ opacity: 0, y: 10 }}
@@ -524,17 +603,21 @@ export default function App() {
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.4 }}
               >
-                <motion.p 
-                  className="text-zinc-100"
+                <motion.p
+                  className={userPortal === 'hawkins_lab' ? 'text-amber-400' : 'text-zinc-100'}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.1 }}
                 >
-                  Enter your team code to access the challenges:
+                  {userPortal === 'hawkins_lab'
+                    ? 'Infiltration authorized. Enter the Lab Access Code:'
+                    : userPortal === 'upside_down'
+                      ? 'The gateway is open. Enter the Void Frequency Code:'
+                      : 'Enter your team code to access the challenges:'}
                 </motion.p>
-                
+
                 <form onSubmit={handleCodeSubmit} className="space-y-5">
-                  <motion.div 
+                  <motion.div
                     className="space-y-2"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -549,27 +632,28 @@ export default function App() {
                       name="teamCode"
                       value={enteredCode}
                       onChange={(e) => setEnteredCode(e.target.value.toUpperCase())}
-                      className="w-full px-4 py-3 bg-black/50 border border-zinc-700/50 rounded-lg text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all duration-300 hover:border-zinc-600 font-mono tracking-wider text-center"
-                      placeholder="ENIG-X-XXXX-XXXX"
+                      className={`w-full px-4 py-3 bg-black/50 border border-zinc-700/50 rounded-lg text-white placeholder-zinc-600 focus:outline-none focus:ring-2 ${userPortal === 'hawkins_lab' ? 'focus:ring-amber-500' : 'focus:ring-red-500'} focus:border-transparent transition-all duration-300 hover:border-zinc-600 font-mono tracking-wider text-center`}
+                      placeholder={userPortal === 'hawkins_lab' ? "LAB-XXXX-XXXX" : userPortal === 'upside_down' ? "VOID-XXXX-XXXX" : "ENIG-X-XXXX-XXXX"}
                       required
-                      pattern="[A-Z0-9-]+"
+                      pattern="[A-Z0-9\-]+"
                     />
                   </motion.div>
 
                   <motion.button
                     type="submit"
-                    className="w-full py-3 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-all duration-300 shadow-lg shadow-red-500/20 hover:shadow-red-500/40 hover:shadow-xl"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                    disabled={isLoading}
+                    className={`w-full py-3 text-white rounded-lg transition-all duration-300 shadow-lg ${isLoading ? 'bg-zinc-700/50 cursor-not-allowed shadow-none' : (userPortal === 'hawkins_lab' ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-500/20 hover:shadow-amber-500/40' : 'bg-red-600 hover:bg-red-500 shadow-red-500/20 hover:shadow-red-500/40')} hover:shadow-xl`}
+                    whileHover={!isLoading ? { scale: 1.02 } : {}}
+                    whileTap={!isLoading ? { scale: 0.98 } : {}}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.3 }}
                   >
-                    Enter
+                    {isLoading ? 'Processing...' : 'Enter'}
                   </motion.button>
                 </form>
 
-                <motion.div 
+                <motion.div
                   className="text-center"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -590,7 +674,7 @@ export default function App() {
 
         {/* Decorative corner accents with animation */}
         {/* ... (Corner accents unchanged) ... */}
-        <motion.div 
+        <motion.div
           className="absolute -top-2 -left-2 w-8 h-8 border-l-2 border-t-2 border-red-500/30 rounded-tl-lg"
           animate={{
             opacity: [0.3, 0.8, 0.3],
@@ -602,7 +686,7 @@ export default function App() {
             ease: "easeInOut"
           }}
         />
-        <motion.div 
+        <motion.div
           className="absolute -top-2 -right-2 w-8 h-8 border-r-2 border-t-2 border-red-500/30 rounded-tr-lg"
           animate={{
             opacity: [0.3, 0.8, 0.3],
@@ -615,7 +699,7 @@ export default function App() {
             delay: 0.5
           }}
         />
-        <motion.div 
+        <motion.div
           className="absolute -bottom-2 -left-2 w-8 h-8 border-l-2 border-b-2 border-red-500/30 rounded-bl-lg"
           animate={{
             opacity: [0.3, 0.8, 0.3],
@@ -628,7 +712,7 @@ export default function App() {
             delay: 1
           }}
         />
-        <motion.div 
+        <motion.div
           className="absolute -bottom-2 -right-2 w-8 h-8 border-r-2 border-b-2 border-red-500/30 rounded-br-lg"
           animate={{
             opacity: [0.3, 0.8, 0.3],

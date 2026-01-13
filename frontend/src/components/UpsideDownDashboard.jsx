@@ -1,141 +1,89 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { api } from '../api';
 import { StagePortal } from './StagePortal.jsx';
 import { StageModal } from './StageModal.jsx';
 import { QuestionModal } from './QuestionModal.jsx';
 import { DeadTree, RadioTower } from './icons/index.jsx';
 import { OtherTeamProgress } from './OtherTeamProgress.jsx';
 
-const initialStages = [
+const STAGE_METADATA = [
   {
     id: 1,
     label: 'STAGE I',
     name: 'THE BREACH',
-    description:
-      'The portal has opened. Dark energy corrupts the code. Solve these foundational challenges to stabilize the dimensional rift.',
+    description: 'The portal has opened. Dark energy corrupts the code. Solve these foundational challenges.',
     unlockPoints: 0,
-    questions: [
-      {
-        number: 1,
-        title: 'String Reversal in the Void',
-        status: 'active',
-        points: 100,
-        questionText: 'Write a function that reverses a string. The darkness consumes all forward motion - only backwards can you escape.',
-        correctAnswer: 'test',
-      },
-      {
-        number: 2,
-        title: 'Array Manipulation Through Darkness',
-        status: 'active',
-        points: 150,
-        questionText: 'Find the maximum value in an array corrupted by the Upside Down. Numbers shift and change - locate the strongest.',
-        correctAnswer: 'test',
-      },
-      {
-        number: 3,
-        title: 'Loop Through the Upside Down',
-        status: 'active',
-        points: 200,
-        questionText: 'Create a loop that traverses a nested structure. Each layer is darker than the last. Navigate wisely.',
-        correctAnswer: 'test',
-      },
-      {
-        number: 4,
-        title: 'Conditional Logic in Corrupted Space',
-        status: 'active',
-        points: 250,
-        questionText: 'Implement conditional branching where truth itself is unstable. The Mind Flayer distorts reality - find the correct path.',
-        correctAnswer: 'test',
-      },
-    ],
   },
   {
     id: 2,
     label: 'STAGE II',
-    name: 'HAWKINS LAB',
-    description:
-      'Deep within the laboratory, experiments have failed. Advanced algorithms hide in the shadows. Navigate the darkness to uncover the truth.',
+    name: 'EXPERIMENT 001',
+    description: 'Deep within the laboratory, experiments have failed. Advanced algorithms hide in the shadows.',
     unlockPoints: 200,
-    questions: [
-      {
-        number: 5,
-        title: 'Recursive Descent into the Void',
-        status: 'locked',
-        points: 300,
-        questionText: 'Build a recursive function that explores infinite depth. Each call takes you deeper into the Upside Down.',
-        correctAnswer: 'test',
-      },
-      {
-        number: 6,
-        title: 'Binary Search Through Dimensions',
-        status: 'locked',
-        points: 350,
-        questionText: 'Search through parallel dimensions using binary search. Time is fracturing - find the target before it is too late.',
-        correctAnswer: 'test',
-      },
-      {
-        number: 7,
-        title: 'Dynamic Programming in Chaos',
-        status: 'locked',
-        points: 400,
-        questionText: 'Optimize a chaotic system using dynamic programming. Memory itself is corrupted - cache your solutions carefully.',
-        correctAnswer: 'test',
-      },
-      {
-        number: 8,
-        title: 'Graph Traversal Through Portals',
-        status: 'locked',
-        points: 450,
-        questionText: 'Navigate a graph where edges are unstable portals. Find the shortest path before the connections collapse.',
-        correctAnswer: 'test',
-      },
-    ],
   },
   {
     id: 3,
     label: 'STAGE III',
     name: 'THE MIND FLAYER',
-    description:
-      'Face the ultimate corruption. The Mind Flayer awaits. Only the most skilled coders can survive these nightmarish algorithmic challenges.',
+    description: 'Face the ultimate corruption. The Mind Flayer awaits.',
     unlockPoints: 400,
-    questions: [
-      {
-        number: 9,
-        title: 'Advanced Tree Traversal in Darkness',
-        status: 'locked',
-        points: 500,
-        questionText: 'Traverse a corrupted binary tree where nodes shift between dimensions. Balance is lost - restore order.',
-        correctAnswer: 'test',
-      },
-      {
-        number: 10,
-        title: 'Complex System Design Under Pressure',
-        status: 'locked',
-        points: 600,
-        questionText: 'Design a system that can withstand the Mind Flayer corruption. Architecture must be resilient against supernatural forces.',
-        correctAnswer: 'test',
-      },
-      {
-        number: 11,
-        title: 'Optimization Through Supernatural Forces',
-        status: 'locked',
-        points: 700,
-        questionText: 'Optimize an algorithm under impossible constraints. Time and space itself are warping - efficiency is survival.',
-        correctAnswer: 'test',
-      },
-      {
-        number: 12,
-        title: 'The Final Algorithm',
-        status: 'locked',
-        points: 1000,
-        questionText: 'Face the ultimate challenge. The Mind Flayer essence is encoded in this algorithm. Solve it to close the portal forever.',
-        correctAnswer: 'test',
-      },
-    ],
   },
 ];
 
-export function UpsideDownDashboard({ otherTeamProgress, onProgressUpdate }) {
-  const [stages, setStages] = useState(initialStages);
+export function UpsideDownDashboard({ otherTeamProgress, onProgressUpdate, onLogout, cipherCode, keyCode }) {
+  const [stages, setStages] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const questions = await api.get('/game/questions');
+        let initialStages = STAGE_METADATA.map((meta, index) => {
+          const stageQs = questions.slice(index * 4, (index + 1) * 4).map((q, i) => {
+            let status = 'locked';
+            if (index === 0) status = 'active';
+            if (q.isCompleted) status = 'completed';
+
+            return {
+              ...q,
+              number: index * 4 + i + 1,
+              questionText: q.description,
+              status
+            };
+          });
+          return { ...meta, questions: stageQs };
+        });
+
+        // Fetch current team score and unlock stages
+        try {
+          const team = await api.get('/teams/me');
+          if (team) {
+            setTotalPoints(team.score);
+
+            initialStages = initialStages.map(stage => {
+              if (team.score >= stage.unlockPoints) {
+                const updatedQuestions = stage.questions.map(q => {
+                  if (q.status === 'locked') return { ...q, status: 'active' };
+                  return q;
+                });
+                return { ...stage, questions: updatedQuestions };
+              }
+              return stage;
+            });
+          }
+        } catch (err) {
+          console.error("Failed to fetch team score", err);
+        }
+
+        setStages(initialStages);
+      } catch (e) {
+        console.error("Failed to load questions", e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
   const [totalPoints, setTotalPoints] = useState(0);
   const [selectedStage, setSelectedStage] = useState(null);
   const [selectedQuestion, setSelectedQuestion] = useState(null);
@@ -157,53 +105,69 @@ export function UpsideDownDashboard({ otherTeamProgress, onProgressUpdate }) {
     }
   };
 
-  const handleCorrectAnswer = () => {
+  const handleCorrectAnswer = async (answer) => {
     if (!selectedQuestion) return;
 
-    const newTotalPoints = totalPoints + selectedQuestion.points;
-    setTotalPoints(newTotalPoints);
-
-    const newStages = stages.map((stage) => {
-      const questionIndex = stage.questions.findIndex(
-        (q) => q.number === selectedQuestion.number
-      );
-
-      if (questionIndex !== -1) {
-        const updatedQuestions = [...stage.questions];
-        updatedQuestions[questionIndex] = {
-          ...updatedQuestions[questionIndex],
-          status: 'completed',
-        };
-
-        return {
-          ...stage,
-          questions: updatedQuestions,
-        };
-      }
-
-      if (newTotalPoints >= stage.unlockPoints && stage.questions.every((q) => q.status === 'locked')) {
-        const unlockedQuestions = stage.questions.map((q) => ({
-          ...q,
-          status: 'active',
-        }));
-        return {
-          ...stage,
-          questions: unlockedQuestions,
-        };
-      }
-
-      return stage;
-    });
-
-    setStages(newStages);
-    
-    // Notify parent about progress update
-    if (onProgressUpdate) {
-      onProgressUpdate({
-        totalPoints: newTotalPoints,
-        completedQuestions: newStages.flatMap(s => s.questions).filter(q => q.status === 'completed').length,
-        totalQuestions: newStages.flatMap(s => s.questions).length,
+    try {
+      const res = await api.post('/game/answers', {
+        questionId: selectedQuestion.id,
+        answer: answer
       });
+
+      if (res.isCorrect) {
+        const newTotalPoints = totalPoints + (res.pointsAwarded || 0); // Use server points or local if consistent
+        setTotalPoints(newTotalPoints);
+
+        const newStages = stages.map((stage) => {
+          const questionIndex = stage.questions.findIndex(
+            (q) => q.number === selectedQuestion.number
+          );
+
+          if (questionIndex !== -1) {
+            const updatedQuestions = [...stage.questions];
+            updatedQuestions[questionIndex] = {
+              ...updatedQuestions[questionIndex],
+              status: 'completed',
+            };
+
+            return {
+              ...stage,
+              questions: updatedQuestions,
+            };
+          }
+
+          if (newTotalPoints >= stage.unlockPoints && stage.questions.every((q) => q.status === 'locked')) {
+            const unlockedQuestions = stage.questions.map((q) => ({
+              ...q,
+              status: 'active',
+            }));
+            return {
+              ...stage,
+              questions: unlockedQuestions,
+            };
+          }
+
+          return stage;
+        });
+
+        setStages(newStages);
+
+        // Notify parent about progress update
+        if (onProgressUpdate) {
+          onProgressUpdate({
+            totalPoints: newTotalPoints,
+            completedQuestions: newStages.flatMap(s => s.questions).filter(q => q.status === 'completed').length,
+            totalQuestions: newStages.flatMap(s => s.questions).length,
+          });
+        }
+        return true; // Success
+      } else {
+        return false; // Incorrect
+      }
+    } catch (e) {
+      console.error("Answer submission failed", e);
+      alert("Error submitting answer");
+      return false;
     }
   };
 
@@ -262,31 +226,49 @@ export function UpsideDownDashboard({ otherTeamProgress, onProgressUpdate }) {
             portal. Choose your stage and face the darkness within.
           </p>
 
-          {/* Points Display */}
-          <div className="mt-8 flex items-center justify-center gap-4">
-            <div className="w-16 h-px bg-gradient-to-r from-transparent via-[var(--blood-red)] to-transparent" />
-            <div className="flex items-center gap-2">
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 100 100"
-                fill="currentColor"
-                className="text-[var(--ember-orange)]"
-              >
-                <path d="M 50 10 L 60 38 L 90 38 L 66 56 L 76 84 L 50 66 L 24 84 L 34 56 L 10 38 L 40 38 Z" />
-              </svg>
+          {/* Dashboard Codes */}
+          <div className="mt-8 flex items-center justify-center gap-12 bg-black/40 backdrop-blur-md px-8 py-4 rounded-2xl border border-[var(--blood-red)]/20 inline-flex mx-auto">
+            {/* Points Earned */}
+            <div className="flex flex-col items-center gap-1">
               <span className="text-2xl font-bold text-[var(--ember-orange)]">
                 {totalPoints}
               </span>
-              <span className="text-sm text-[var(--ash-dim)] uppercase tracking-widest">
+              <span className="text-[10px] text-[var(--ash-dim)] uppercase tracking-widest">
                 Points Earned
               </span>
             </div>
-            <div className="w-16 h-px bg-gradient-to-r from-transparent via-[var(--blood-red)] to-transparent" />
+
+            {/* Vertical Divider */}
+            <div className="w-px h-10 bg-[var(--blood-red)]/30" />
+
+            {/* Codes Grid */}
+            <div className="flex gap-8">
+              {cipherCode && (
+                <div className="flex flex-col items-start leading-tight">
+                  <span className="text-[10px] text-[var(--blood-red)] font-bold uppercase tracking-[0.2em] mb-1">
+                    Cipher (Upside Down)
+                  </span>
+                  <span className="text-xl font-bold text-[var(--blood-red)] font-mono tracking-wider" style={{ textShadow: '0 0 10px var(--blood-red)' }}>
+                    {cipherCode}
+                  </span>
+                </div>
+              )}
+
+              {keyCode && (
+                <div className="flex flex-col items-start leading-tight">
+                  <span className="text-[10px] text-[var(--ember-orange)] font-bold uppercase tracking-[0.2em] mb-1">
+                    Key (Hawkins Lab)
+                  </span>
+                  <span className="text-xl font-bold text-[var(--ember-orange)] font-mono tracking-wider">
+                    {keyCode}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Subtitle */}
-          <div className="mt-6 flex items-center justify-center gap-3">
+          <div className="mt-12 flex items-center justify-center gap-3">
             <div className="w-16 h-px bg-gradient-to-r from-transparent via-[var(--blood-red)] to-transparent" />
             <span className="text-sm text-[var(--ash-dim)] uppercase tracking-widest">
               Select A Gateway
@@ -297,7 +279,7 @@ export function UpsideDownDashboard({ otherTeamProgress, onProgressUpdate }) {
 
         {/* Other Team Progress */}
         {otherTeamProgress && (
-          <OtherTeamProgress 
+          <OtherTeamProgress
             progress={otherTeamProgress}
             worldName="Hawkins Lab"
             accentColor="#FFA500"
@@ -409,13 +391,14 @@ export function UpsideDownDashboard({ otherTeamProgress, onProgressUpdate }) {
       {/* Question Modal */}
       {selectedQuestion && (
         <QuestionModal
+          questionId={selectedQuestion.id}
           questionNumber={selectedQuestion.number}
           title={selectedQuestion.title}
           questionText={selectedQuestion.questionText}
           points={selectedQuestion.points}
           isOpen={selectedQuestion !== null}
           onClose={() => setSelectedQuestion(null)}
-          onCorrectAnswer={handleCorrectAnswer}
+          onCorrectAnswer={(answer) => handleCorrectAnswer(answer)}
         />
       )}
     </div>

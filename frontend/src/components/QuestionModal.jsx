@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
-import { X, CheckCircle, XCircle } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, CheckCircle, XCircle, MessageSquare } from 'lucide-react';
 import { CrackPattern } from './icons/index.jsx';
+import { api } from '../api';
 
 export function QuestionModal({
+  questionId,
   questionNumber,
   title,
   questionText,
@@ -15,6 +17,10 @@ export function QuestionModal({
   const [feedback, setFeedback] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showFeedback, setShowFeedback] = useState(true);
+
+  // Hint State
+  const [hints, setHints] = useState([]);
+  const hasLoadedRef = useRef(false);
 
   // Auto-hide incorrect feedback after 3 seconds
   useEffect(() => {
@@ -30,33 +36,76 @@ export function QuestionModal({
     }
   }, [feedback]);
 
+  // Polling for Hints
+  useEffect(() => {
+    if (!isOpen || !questionId) {
+      hasLoadedRef.current = false;
+      return;
+    }
+
+    const fetchHints = async () => {
+      try {
+        const query = new URLSearchParams({ questionId });
+
+        // If we have hints, use the latest one as the 'since' threshold
+        if (hints.length > 0) {
+          query.append('since', hints[0].createdAt);
+        }
+
+        const newHints = await api.get(`/game/hints?${query.toString()}`);
+        if (newHints && newHints.length > 0) {
+          setHints(prev => {
+            const existingIds = new Set(prev.map(h => h.id));
+            const filteredNew = newHints.filter(h => !existingIds.has(h.id));
+            return [...filteredNew, ...prev].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+          });
+        }
+      } catch (e) {
+        console.error("Hint retrieval failure", e);
+      }
+    };
+
+    // Initial load: fetch everything if not loaded yet
+    if (!hasLoadedRef.current) {
+      fetchHints();
+      hasLoadedRef.current = true;
+    }
+
+    const interval = setInterval(fetchHints, 10000); // 10 second polling
+    return () => clearInterval(interval);
+  }, [isOpen, questionId, hints.length]); // hints.length ensures we know when to send 'since'
+
   if (!isOpen) return null;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!answer.trim()) return;
 
     setIsSubmitting(true);
 
-    // Simulate answer checking (in real app, this would call an API)
-    setTimeout(() => {
-      // For demo purposes, accept "test" as correct answer
-      const isCorrect = answer.toLowerCase().trim() === 'test';
-      
+    try {
+      // Call parent's submit handler which calls API
+      const isCorrect = await onCorrectAnswer(answer);
+
       setFeedback(isCorrect ? 'correct' : 'wrong');
       setIsSubmitting(false);
 
       if (isCorrect) {
         setTimeout(() => {
-          onCorrectAnswer();
           handleClose();
         }, 2000);
       }
-    }, 800);
+    } catch (e) {
+      console.error(e);
+      setFeedback('wrong');
+      setIsSubmitting(false);
+    }
   };
 
   const handleClose = () => {
     setAnswer('');
     setFeedback(null);
+    setHints([]);
+    hasLoadedRef.current = false;
     onClose();
   };
 
@@ -75,7 +124,7 @@ export function QuestionModal({
 
       {/* Modal Container */}
       <div
-        className="relative max-w-3xl w-full rounded-xl border-2 border-[var(--blood-red)]/50 overflow-hidden"
+        className="relative max-w-4xl w-full rounded-xl border-2 border-[var(--blood-red)]/50 overflow-hidden flex flex-col md:flex-row h-[85vh]"
         onClick={(e) => e.stopPropagation()}
         style={{
           background:
@@ -98,22 +147,11 @@ export function QuestionModal({
           <X className="w-5 h-5 text-[var(--blood-red)] group-hover:rotate-90 transition-transform duration-300" />
         </button>
 
-        {/* Fog overlay */}
-        <div
-          className="absolute inset-0 pointer-events-none opacity-40"
-          style={{
-            background: `
-              radial-gradient(ellipse at 50% 50%, rgba(229, 9, 20, 0.1) 0%, transparent 60%)
-            `,
-            animation: 'fog-drift 15s ease-in-out infinite',
-          }}
-        />
-
-        {/* Content */}
-        <div className="relative z-10 p-10">
+        {/* Left Side: Question and Input */}
+        <div className="flex-1 p-10 overflow-y-auto custom-scrollbar border-b md:border-b-0 md:border-r border-[var(--blood-red)]/20 text-white">
           {/* Header */}
-          <div className="mb-8 text-center">
-            <div className="flex items-center justify-center gap-3 mb-4">
+          <div className="mb-8 text-center md:text-left">
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-4">
               <span
                 className="text-sm font-bold text-[var(--ash-dim)]"
                 style={{ fontFamily: 'Cinzel, serif' }}
@@ -179,61 +217,6 @@ export function QuestionModal({
             />
           </div>
 
-          {/* Feedback Message */}
-          <div
-            className={`overflow-hidden transition-all duration-700 ease-out ${
-              feedback && showFeedback ? 'mb-6' : 'mb-0'
-            }`}
-            style={{
-              maxHeight: feedback && showFeedback ? '200px' : '0px',
-            }}
-          >
-            {feedback && (
-              <div
-                className={`p-4 rounded-lg border-2 flex items-center gap-3 ${
-                  feedback === 'correct'
-                    ? 'bg-[var(--ember-orange)]/10 border-[var(--ember-orange)]/50'
-                    : 'bg-[var(--blood-red)]/10 border-[var(--blood-red)]/50'
-                } ${
-                  showFeedback
-                    ? 'animate-scale-in-fog'
-                    : 'opacity-0'
-                }`}
-                style={{
-                  boxShadow:
-                    feedback === 'correct'
-                      ? '0 0 30px rgba(255, 106, 61, 0.3)'
-                      : '0 0 30px rgba(229, 9, 20, 0.3)',
-                  animation: !showFeedback
-                    ? 'fade-out-collapse 0.7s cubic-bezier(0.4, 0, 0.2, 1) forwards'
-                    : undefined,
-                }}
-              >
-                {feedback === 'correct' ? (
-                  <>
-                    <CheckCircle className="w-6 h-6 text-[var(--ember-orange)] flex-shrink-0" />
-                    <div>
-                      <p className="font-bold text-[var(--ember-orange)]">Correct!</p>
-                      <p className="text-sm text-[var(--ash-gray)] mt-1">
-                        Well done! You earned {points} points. Next question unlocking...
-                      </p>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <XCircle className="w-6 h-6 text-[var(--blood-red)] flex-shrink-0" />
-                    <div>
-                      <p className="font-bold text-[var(--blood-red)]">Incorrect</p>
-                      <p className="text-sm text-[var(--ash-gray)] mt-1">
-                        That's not right..
-                      </p>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-
           {/* Submit Button */}
           <button
             onClick={handleSubmit}
@@ -241,27 +224,62 @@ export function QuestionModal({
             className={`
               w-full py-4 rounded-lg font-bold uppercase tracking-widest text-sm
               transition-all duration-700 border-2
-              ${
-                feedback === 'correct' || isSubmitting || !answer.trim()
-                  ? 'bg-[var(--void-dark)]/40 border-[var(--ash-darker)]/30 text-[var(--ash-darker)] cursor-not-allowed'
-                  : 'bg-[var(--blood-red)]/20 border-[var(--blood-red)] text-[var(--blood-red)] hover:bg-[var(--blood-red)]/30 hover:scale-[1.02] animate-pulse-red'
+              ${feedback === 'correct' || isSubmitting || !answer.trim()
+                ? 'bg-[var(--void-dark)]/40 border-[var(--ash-darker)]/30 text-[var(--ash-darker)] cursor-not-allowed'
+                : 'bg-[var(--blood-red)]/20 border-[var(--blood-red)] text-[var(--blood-red)] hover:bg-[var(--blood-red)]/30 hover:scale-[1.02] animate-pulse-red'
               }
             `}
-            style={{
-              boxShadow:
-                feedback !== 'correct' && !isSubmitting && answer.trim()
-                  ? '0 0 30px rgba(229, 9, 20, 0.4), inset 0 0 20px rgba(229, 9, 20, 0.1)'
-                  : 'none',
-              transform: feedback === 'wrong' && !showFeedback ? 'translateY(-10px)' : 'translateY(0)',
-            }}
           >
             {isSubmitting ? 'Checking Answer...' : feedback === 'correct' ? 'Correct!' : 'Submit Answer'}
           </button>
+        </div>
 
-          {/* Hint */}
-          <p className="mt-4 text-xs text-[var(--ash-darker)] text-center italic">
-            Hint: For demo purposes, try typing "test" as the answer
-          </p>
+        {/* Right Side: Live Hint Feed */}
+        <div className="w-full md:w-80 bg-black/40 flex flex-col border-t md:border-t-0 md:border-l border-[var(--blood-red)]/20">
+          <div className="p-4 border-b border-[var(--blood-red)]/20 bg-[var(--blood-red)]/5 flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-[var(--blood-red)]" />
+            <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--blood-red)]">
+              Live Intercepts
+            </h4>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 custom-scrollbar" style={{ maxHeight: 'calc(85vh - 120px)', scrollbarWidth: 'thin', scrollbarColor: 'var(--blood-red) transparent' }}>
+            {hints.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center p-4">
+                <div className="w-8 h-8 rounded-full border border-[var(--blood-red)]/20 flex items-center justify-center mb-2 animate-pulse">
+                  <div className="w-1 h-1 rounded-full bg-[var(--blood-red)]/40" />
+                </div>
+                <span className="text-[10px] text-[var(--ash-dim)] uppercase tracking-widest leading-loose">
+                  Waiting for transmissions from Hawkins Lab...
+                </span>
+              </div>
+            ) : (
+              hints.map((hint, idx) => (
+                <div
+                  key={hint.id || idx}
+                  className="p-3 bg-[var(--void-dark)]/60 border border-[var(--blood-red)]/20 rounded-lg animate-slide-in-right"
+                >
+                  <div className="flex justify-between items-start mb-1">
+                    <span className="text-[9px] font-bold text-[var(--blood-red)] uppercase tracking-wider">
+                      SECURE MSG
+                    </span>
+                    <span className="text-[9px] text-[var(--ash-dim)]">
+                      {new Date(hint.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[var(--ash-gray)] leading-relaxed italic">
+                    "{hint.content}"
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="p-3 bg-black/60 text-center border-t border-[var(--blood-red)]/10">
+            <p className="text-[8px] text-[var(--ash-dim)] uppercase tracking-[0.2em] animate-pulse">
+              Encrypted Connection Stable
+            </p>
+          </div>
         </div>
 
         {/* Bottom crack border */}

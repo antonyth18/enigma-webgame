@@ -1,140 +1,100 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { api } from '../api';
 import { StagePortalLab } from './StagePortalLab';
 import { StageModalLab } from './StageModalLab';
 import { QuestionModalLab } from './QuestionModalLab';
 import { OtherTeamProgress } from './OtherTeamProgress';
 
-const initialStages = [
+const STAGE_METADATA = [
   {
     id: 1,
     label: 'LEVEL 1',
     name: 'CONTAINMENT BREACH',
-    description:
-      'Security systems have failed. The specimens are loose. Solve these protocols to restore containment and prevent total facility collapse.',
+    description: 'Security systems have failed. The specimens are loose. Solve these protocols to restore containment.',
     unlockPoints: 0,
-    questions: [
-      {
-        number: 1,
-        title: 'Access Code Decryption',
-        status: 'active',
-        points: 100,
-        questionText: 'Decrypt the security access code to unlock the first containment chamber. Time is running out.',
-        correctAnswer: 'test',
-      },
-      {
-        number: 2,
-        title: 'Specimen Database Query',
-        status: 'active',
-        points: 150,
-        questionText: 'Query the corrupted specimen database. Find the pattern in the chaos before the system purges.',
-        correctAnswer: 'test',
-      },
-      {
-        number: 3,
-        title: 'Power Grid Restoration',
-        status: 'active',
-        points: 200,
-        questionText: 'Restore power to the emergency containment systems. Calculate the correct circuit configuration.',
-        correctAnswer: 'test',
-      },
-      {
-        number: 4,
-        title: 'Biometric Override',
-        status: 'active',
-        points: 250,
-        questionText: 'Override the biometric security protocols. The specimens are escaping - act fast.',
-        correctAnswer: 'test',
-      },
-    ],
   },
   {
     id: 2,
     label: 'LEVEL 2',
     name: 'EXPERIMENT 001',
-    description:
-      'Deep in the restricted wing, forbidden experiments await. Advanced security measures guard dark secrets. Navigate the protocols to uncover the truth.',
+    description: 'Deep in the restricted wing, forbidden experiments await. Navigate the protocols to uncover the truth.',
     unlockPoints: 200,
-    questions: [
-      {
-        number: 5,
-        title: 'Neural Network Analysis',
-        status: 'locked',
-        points: 300,
-        questionText: 'Analyze the neural network patterns from Experiment 001. The data is fragmenting.',
-        correctAnswer: 'test',
-      },
-      {
-        number: 6,
-        title: 'Chemical Formula Sequence',
-        status: 'locked',
-        points: 350,
-        questionText: 'Decode the chemical formula sequence. One wrong calculation could be catastrophic.',
-        correctAnswer: 'test',
-      },
-      {
-        number: 7,
-        title: 'Memory Reconstruction',
-        status: 'locked',
-        points: 400,
-        questionText: 'Reconstruct fragmented memory patterns from the test subjects. Find the hidden message.',
-        correctAnswer: 'test',
-      },
-      {
-        number: 8,
-        title: 'Security Clearance Escalation',
-        status: 'locked',
-        points: 450,
-        questionText: 'Escalate your security clearance through the multi-layered authentication system.',
-        correctAnswer: 'test',
-      },
-    ],
   },
   {
     id: 3,
     label: 'LEVEL 3',
     name: 'THE DIRECTOR',
-    description:
-      'Face the final protocols. The Director AI has gone rogue. Only the most skilled operatives can shut down the core and escape the facility alive.',
+    description: 'Face the final protocols. The Director AI has gone rogue.',
     unlockPoints: 400,
-    questions: [
-      {
-        number: 9,
-        title: 'AI Core Logic Puzzle',
-        status: 'locked',
-        points: 500,
-        questionText: 'Solve the AI core logic puzzle. The Director is watching your every move.',
-        correctAnswer: 'test',
-      },
-      {
-        number: 10,
-        title: 'Facility Lockdown Override',
-        status: 'locked',
-        points: 600,
-        questionText: 'Override the facility-wide lockdown. All exits are sealed - find the master code.',
-        correctAnswer: 'test',
-      },
-      {
-        number: 11,
-        title: 'Quantum Encryption Break',
-        status: 'locked',
-        points: 700,
-        questionText: 'Break through the quantum encryption protecting the core systems. Time and space are unstable.',
-        correctAnswer: 'test',
-      },
-      {
-        number: 12,
-        title: 'Final Shutdown Sequence',
-        status: 'locked',
-        points: 1000,
-        questionText: 'Execute the final shutdown sequence. The fate of Hawkins depends on your success.',
-        correctAnswer: 'test',
-      },
-    ],
   },
 ];
 
-export function HawkinsLabDashboard({ otherTeamProgress, onProgressUpdate }) {
-  const [stages, setStages] = useState(initialStages);
+export function HawkinsLabDashboard({ otherTeamProgress, onProgressUpdate, onLogout, cipherCode, keyCode }) {
+  const [stages, setStages] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadData() {
+      let initialStages = [];
+      let currentTotalPoints = 0;
+
+      try {
+        const questions = await api.get('/game/questions');
+        // Group questions into stages
+        initialStages = STAGE_METADATA.map((meta, index) => {
+          const stageQs = questions.slice(index * 4, (index + 1) * 4).map((q, i) => {
+            let status = 'locked';
+            if (index === 0) status = 'active';
+            if (q.isCompleted) status = 'completed';
+
+            return {
+              ...q,
+              number: index * 4 + i + 1,
+              questionText: q.description,
+              status
+            };
+          });
+          return { ...meta, questions: stageQs };
+        });
+
+        // 2. Fetch current team data (score and potentially more)
+        try {
+          const team = await api.get('/teams/me');
+          if (team) {
+            currentTotalPoints = team.score;
+            setTotalPoints(team.score);
+
+            // 3. Update stage unlock status based on fetched totalPoints
+            initialStages = initialStages.map(stage => {
+              // If points enough, mark active if not already completed maybe? 
+              // Actually the existing logic relies on manual click or automatic?
+              // Simplified: Stages are unlocked if points >= unlockPoints
+              if (currentTotalPoints >= stage.unlockPoints) {
+                const updatedQuestions = stage.questions.map(q => {
+                  // Only unlock if not already completed
+                  if (q.status === 'locked') {
+                    return { ...q, status: 'active' };
+                  }
+                  return q;
+                });
+                return { ...stage, questions: updatedQuestions };
+              }
+              return stage;
+            });
+          }
+        } catch (err) {
+          console.error("Failed to fetch team data", err);
+        }
+
+        setStages(initialStages);
+      } catch (e) {
+        console.error("Failed to load questions", e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
   const [totalPoints, setTotalPoints] = useState(0);
   const [selectedStage, setSelectedStage] = useState(null);
   const [selectedQuestion, setSelectedQuestion] = useState(null);
@@ -156,7 +116,7 @@ export function HawkinsLabDashboard({ otherTeamProgress, onProgressUpdate }) {
     }
   };
 
-  const handleCorrectAnswer = () => {
+  const handleCorrectAnswer = async (submittedContent) => {
     if (!selectedQuestion) return;
 
     const newTotalPoints = totalPoints + selectedQuestion.points;
@@ -195,7 +155,7 @@ export function HawkinsLabDashboard({ otherTeamProgress, onProgressUpdate }) {
     });
 
     setStages(newStages);
-    
+
     // Notify parent about progress update
     if (onProgressUpdate) {
       onProgressUpdate({
@@ -255,7 +215,7 @@ export function HawkinsLabDashboard({ otherTeamProgress, onProgressUpdate }) {
           <div className="flex items-center justify-center gap-4 mb-6">
             <div
               className="w-12 h-12 rounded-full bg-[#FFA500]/20 flex items-center justify-center border-2 border-[#FFA500]"
-              style={{ 
+              style={{
                 boxShadow: '0 0 30px rgba(255, 165, 0, 0.8)',
                 animation: 'pulse-yellow 2s ease-in-out infinite'
               }}
@@ -279,31 +239,49 @@ export function HawkinsLabDashboard({ otherTeamProgress, onProgressUpdate }) {
             Escape before the lockdown becomes permanent.
           </p>
 
-          {/* Points Display */}
-          <div className="mt-8 flex items-center justify-center gap-4">
-            <div className="w-16 h-px bg-gradient-to-r from-transparent via-[#FFA500] to-transparent" />
-            <div className="flex items-center gap-2">
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 100 100"
-                fill="currentColor"
-                className="text-[#FFD700]"
-              >
-                <path d="M 50 10 L 60 38 L 90 38 L 66 56 L 76 84 L 50 66 L 24 84 L 34 56 L 10 38 L 40 38 Z" />
-              </svg>
+          {/* Dashboard Codes */}
+          <div className="mt-8 flex items-center justify-center gap-12 bg-black/40 backdrop-blur-md px-8 py-4 rounded-2xl border border-[#FFA500]/20 inline-flex mx-auto">
+            {/* Clearance Points */}
+            <div className="flex flex-col items-center gap-1">
               <span className="text-2xl font-bold text-[#FFD700]">
                 {totalPoints}
               </span>
-              <span className="text-sm text-[var(--ash-dim)] uppercase tracking-widest">
+              <span className="text-[10px] text-[var(--ash-dim)] uppercase tracking-widest">
                 Clearance Points
               </span>
             </div>
-            <div className="w-16 h-px bg-gradient-to-r from-transparent via-[#FFA500] to-transparent" />
+
+            {/* Vertical Divider */}
+            <div className="w-px h-10 bg-[#FFA500]/30" />
+
+            {/* Codes Grid */}
+            <div className="flex gap-8">
+              {cipherCode && (
+                <div className="flex flex-col items-start leading-tight">
+                  <span className="text-[10px] text-[#E50914] font-bold uppercase tracking-[0.2em] mb-1">
+                    Cipher (Upside Down)
+                  </span>
+                  <span className="text-xl font-bold text-[#E50914] font-mono tracking-wider">
+                    {cipherCode}
+                  </span>
+                </div>
+              )}
+
+              {keyCode && (
+                <div className="flex flex-col items-start leading-tight">
+                  <span className="text-[10px] text-[#FFA500] font-bold uppercase tracking-[0.2em] mb-1">
+                    Key (Hawkins Lab)
+                  </span>
+                  <span className="text-xl font-bold text-[#FFA500] font-mono tracking-wider">
+                    {keyCode}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Subtitle */}
-          <div className="mt-6 flex items-center justify-center gap-3">
+          <div className="mt-12 flex items-center justify-center gap-3">
             <div className="w-16 h-px bg-gradient-to-r from-transparent via-[#FFA500] to-transparent" />
             <span className="text-sm text-[var(--ash-dim)] uppercase tracking-widest">
               Select Security Level
@@ -314,7 +292,7 @@ export function HawkinsLabDashboard({ otherTeamProgress, onProgressUpdate }) {
 
         {/* Other Team Progress */}
         {otherTeamProgress && (
-          <OtherTeamProgress 
+          <OtherTeamProgress
             progress={otherTeamProgress}
             worldName="Upside Down"
             accentColor="#E50914"
@@ -397,7 +375,7 @@ export function HawkinsLabDashboard({ otherTeamProgress, onProgressUpdate }) {
           <div className="flex items-center justify-center gap-3">
             <div
               className="w-2 h-2 bg-[#FFA500] rounded-full"
-              style={{ 
+              style={{
                 boxShadow: '0 0 10px rgba(255, 165, 0, 0.8)',
                 animation: 'pulse-yellow 2s ease-in-out infinite'
               }}
@@ -430,6 +408,7 @@ export function HawkinsLabDashboard({ otherTeamProgress, onProgressUpdate }) {
       {/* Question Modal */}
       {selectedQuestion && (
         <QuestionModalLab
+          questionId={selectedQuestion.id}
           questionNumber={selectedQuestion.number}
           title={selectedQuestion.title}
           questionText={selectedQuestion.questionText}

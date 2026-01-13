@@ -1,9 +1,9 @@
 import { Lock } from 'lucide-react';
 
-export function WorldSelection({ onSelectWorld, lockedWorld, otherTeamWorld }) {
+export function WorldSelection({ onSelectWorld, lockedWorld, otherTeamWorld, isLoggedIn, onLogin, onLogout }) {
   const worlds = [
     {
-      id: 'upside-down',
+      id: 'upside_down',
       title: 'ESCAPE THE UPSIDE DOWN',
       description: 'Navigate through corrupted dimensions. Face the darkness of the Upside Down.',
       color: '#E50914',
@@ -11,7 +11,7 @@ export function WorldSelection({ onSelectWorld, lockedWorld, otherTeamWorld }) {
       glow: 'rgba(229, 9, 20, 0.5)',
     },
     {
-      id: 'hawkins-lab',
+      id: 'hawkins_lab',
       title: 'ESCAPE THE HAWKINS LAB',
       description: 'Infiltrate the secret facility. Uncover the experiments hidden in the shadows.',
       color: '#FFA500',
@@ -58,14 +58,19 @@ export function WorldSelection({ onSelectWorld, lockedWorld, otherTeamWorld }) {
                 Your rival team has entered: <span className="font-bold">{worlds.find(w => w.id === otherTeamWorld)?.title}</span>
               </span>
             )}
+            {!isLoggedIn && (
+              <span className="block mt-4 text-red-500 font-bold animate-pulse">
+                SYSTEM LOCKED: AUTHENTICATION REQUIRED TO ACCESS PORTALS
+              </span>
+            )}
           </p>
         </div>
 
         {/* World Selection Cards */}
         <div className="max-w-6xl mx-auto grid grid-cols-2 gap-8">
           {worlds.map((world) => {
-            const isLocked = lockedWorld && lockedWorld !== world.id;
-            
+            const isLocked = (lockedWorld && lockedWorld !== world.id) || !isLoggedIn;
+
             return (
               <button
                 key={world.id}
@@ -126,7 +131,7 @@ export function WorldSelection({ onSelectWorld, lockedWorld, otherTeamWorld }) {
                         <Lock className="w-8 h-8 text-[var(--ash-darker)]" />
                       </div>
                       <p className="text-sm text-[var(--ash-darker)] font-bold uppercase">
-                        Gateway Sealed
+                        {isLoggedIn ? 'Gateway Sealed' : 'Authentication Required'}
                       </p>
                     </div>
                   )}

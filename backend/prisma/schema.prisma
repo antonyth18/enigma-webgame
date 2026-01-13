@@ -1,0 +1,71 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  email     String?  @unique
+  password  String
+  teamId    Int?
+  team      Team?    @relation(fields: [teamId], references: [id])
+  currentWorld World? 
+  createdAt DateTime @default(now())
+}
+
+model Team {
+  id          Int      @id @default(autoincrement())
+  name        String
+  code        String   @unique
+  score       Int      @default(0)
+  members     User[]
+  answers     Answer[]
+  hints       Hint[]
+  createdAt   DateTime @default(now())
+}
+
+enum World {
+  HAWKINS
+  UPSIDE_DOWN
+}
+
+model Question {
+  id            Int      @id @default(autoincrement())
+  title         String
+  description   String
+  world         World
+  points        Int
+  correctAnswer String
+  hints         Hint[]
+  answers       Answer[]
+}
+
+model Hint {
+  id         Int      @id @default(autoincrement())
+  content    String
+  questionId Int
+  question   Question @relation(fields: [questionId], references: [id])
+  teamId     Int?
+  team       Team?    @relation(fields: [teamId], references: [id])
+  createdAt  DateTime @default(now())
+}
+
+model Answer {
+  id         Int      @id @default(autoincrement())
+  content    String
+  isCorrect  Boolean
+  timestamp  DateTime @default(now())
+  teamId     Int
+  team       Team     @relation(fields: [teamId], references: [id])
+  questionId Int
+  question   Question @relation(fields: [questionId], references: [id])
+}
