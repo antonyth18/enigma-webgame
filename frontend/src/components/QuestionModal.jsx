@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, CheckCircle, XCircle, MessageSquare } from 'lucide-react';
+import { X, CheckCircle, XCircle, MessageSquare, ExternalLink, Download } from 'lucide-react';
 import { CrackPattern } from './icons/index.jsx';
 import { api } from '../api';
 
@@ -9,6 +9,8 @@ export function QuestionModal({
   title,
   questionText,
   points,
+  resourceLink,
+  isLocked,
   isOpen,
   onClose,
   onCorrectAnswer,
@@ -31,7 +33,7 @@ export function QuestionModal({
       }, 3000);
 
       return () => clearTimeout(timer);
-    } else if (feedback === 'correct') {
+    } else if (feedback === 'correct' || feedback === 'locked') {
       setShowFeedback(true);
     }
   }, [feedback]);
@@ -84,16 +86,17 @@ export function QuestionModal({
 
     try {
       // Call parent's submit handler which calls API
-      const isCorrect = await onCorrectAnswer(answer);
+      const res = await onCorrectAnswer(answer);
 
-      setFeedback(isCorrect ? 'correct' : 'wrong');
-      setIsSubmitting(false);
-
-      if (isCorrect) {
+      if (res && res.isCorrect) {
+        setFeedback('correct');
         setTimeout(() => {
           handleClose();
         }, 2000);
+      } else {
+        setFeedback(res?.requiresPairing ? 'locked' : 'wrong');
       }
+      setIsSubmitting(false);
     } catch (e) {
       console.error(e);
       setFeedback('wrong');
@@ -194,6 +197,19 @@ export function QuestionModal({
             <p className="text-[var(--ash-gray)] leading-relaxed text-lg whitespace-pre-wrap">
               {questionText}
             </p>
+
+            {resourceLink && (
+              <a
+                href={resourceLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-6 flex items-center gap-2 px-4 py-2 bg-[var(--blood-red)]/5 border border-[var(--blood-red)]/30 rounded-md text-[var(--blood-red)] hover:bg-[var(--blood-red)]/10 transition-colors w-fit group"
+              >
+                <Download className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                <span className="text-sm font-bold uppercase tracking-wider">Download Protocol Assets</span>
+                <ExternalLink className="w-3 h-3 opacity-50" />
+              </a>
+            )}
           </div>
 
           {/* Answer Input */}
@@ -220,17 +236,17 @@ export function QuestionModal({
           {/* Submit Button */}
           <button
             onClick={handleSubmit}
-            disabled={!answer.trim() || feedback === 'correct' || isSubmitting}
+            disabled={!answer.trim() || feedback === 'correct' || isSubmitting || isLocked}
             className={`
               w-full py-4 rounded-lg font-bold uppercase tracking-widest text-sm
               transition-all duration-700 border-2
-              ${feedback === 'correct' || isSubmitting || !answer.trim()
+              ${feedback === 'correct' || feedback === 'locked' || isSubmitting || !answer.trim() || isLocked
                 ? 'bg-[var(--void-dark)]/40 border-[var(--ash-darker)]/30 text-[var(--ash-darker)] cursor-not-allowed'
                 : 'bg-[var(--blood-red)]/20 border-[var(--blood-red)] text-[var(--blood-red)] hover:bg-[var(--blood-red)]/30 hover:scale-[1.02] animate-pulse-red'
               }
             `}
           >
-            {isSubmitting ? 'Checking Answer...' : feedback === 'correct' ? 'Correct!' : 'Submit Answer'}
+            {isLocked ? 'Locked: Hawkins Protocol Required' : (isSubmitting ? 'Checking Answer...' : feedback === 'correct' ? 'Correct!' : (feedback === 'locked' ? 'Access Denied: Hawkins Protocol Required' : 'Submit Answer'))}
           </button>
         </div>
 

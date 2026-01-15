@@ -22,6 +22,7 @@ export default function App({ onLoginSuccess }) {
   const [isCopied, setIsCopied] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [userPortal, setUserPortal] = useState(localStorage.getItem('portal') || null);
+  const [error, setError] = useState(null);
 
   // Function to generate the random part of the code
   const generateRandomSegments = useCallback(() => {
@@ -72,9 +73,10 @@ export default function App({ onLoginSuccess }) {
         if (res.team) localStorage.setItem('team', JSON.stringify(res.team));
 
         setAuthState('logged-in');
+        setError(null);
       } catch (err) {
         console.error(err);
-        alert(err.message || 'Login failed');
+        setError(err.message);
       } finally {
         setIsLoading(false);
       }
@@ -99,9 +101,10 @@ export default function App({ onLoginSuccess }) {
 
       if (onLoginSuccess) onLoginSuccess();
       navigate('/dashboard');
+      setError(null);
     } catch (err) {
       console.error(err);
-      alert(err.message || 'Login failed');
+      setError(err.message);
     } finally {
       setIsLoading(false);
     }
@@ -128,10 +131,12 @@ export default function App({ onLoginSuccess }) {
       ...formData,
       [e.target.name]: e.target.value
     });
+    setError(null);
   };
 
   const toggleMode = () => {
     setIsSignup(!isSignup);
+    setError(null);
   };
 
   const subteamName = formData.subteam === 'A' ? 'Cipher' : (formData.subteam === 'B' ? 'Key' : 'Select a Subteam');
@@ -285,6 +290,36 @@ export default function App({ onLoginSuccess }) {
               <X className="w-5 h-5" />
             </motion.button>
           </div>
+
+          <AnimatePresence>
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, height: 0, scale: 0.95 }}
+                animate={{
+                  opacity: 1,
+                  height: "auto",
+                  scale: 1,
+                  x: [0, -4, 4, -4, 4, 0]
+                }}
+                exit={{ opacity: 0, height: 0, scale: 0.95 }}
+                transition={{
+                  x: { duration: 0.4 },
+                  default: { duration: 0.3 }
+                }}
+                className="mb-6 overflow-hidden"
+              >
+                <div className="p-4 bg-red-900/20 border border-red-500/50 rounded-lg flex items-start gap-3">
+                  <div className="w-5 h-5 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0 mt-0.5 border border-red-500/30">
+                    <span className="text-red-500 font-bold text-xs">!</span>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-bold text-red-400 uppercase tracking-widest mb-1">Authorization ERROR</p>
+                    <p className="text-xs text-red-200/70 leading-relaxed font-mono">{error}</p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <AnimatePresence mode="wait">
             {/* Auth Form (Subteam dropdown REMOVED) */}
@@ -572,9 +607,10 @@ export default function App({ onLoginSuccess }) {
 
                       if (onLoginSuccess) onLoginSuccess();
                       navigate('/dashboard');
+                      setError(null);
                     } catch (err) {
                       console.error(err);
-                      alert(err.message || 'Signup failed');
+                      setError(err.message);
                     } finally {
                       setIsLoading(false);
                     }

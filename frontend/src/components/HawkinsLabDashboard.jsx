@@ -119,50 +119,66 @@ export function HawkinsLabDashboard({ otherTeamProgress, onProgressUpdate, onLog
   const handleCorrectAnswer = async (submittedContent) => {
     if (!selectedQuestion) return;
 
-    const newTotalPoints = totalPoints + selectedQuestion.points;
-    setTotalPoints(newTotalPoints);
-
-    const newStages = stages.map((stage) => {
-      const questionIndex = stage.questions.findIndex(
-        (q) => q.number === selectedQuestion.number
-      );
-
-      if (questionIndex !== -1) {
-        const updatedQuestions = [...stage.questions];
-        updatedQuestions[questionIndex] = {
-          ...updatedQuestions[questionIndex],
-          status: 'completed',
-        };
-
-        return {
-          ...stage,
-          questions: updatedQuestions,
-        };
-      }
-
-      if (newTotalPoints >= stage.unlockPoints && stage.questions.every((q) => q.status === 'locked')) {
-        const unlockedQuestions = stage.questions.map((q) => ({
-          ...q,
-          status: 'active',
-        }));
-        return {
-          ...stage,
-          questions: unlockedQuestions,
-        };
-      }
-
-      return stage;
-    });
-
-    setStages(newStages);
-
-    // Notify parent about progress update
-    if (onProgressUpdate) {
-      onProgressUpdate({
-        totalPoints: newTotalPoints,
-        completedQuestions: newStages.flatMap(s => s.questions).filter(q => q.status === 'completed').length,
-        totalQuestions: newStages.flatMap(s => s.questions).length,
+    try {
+      const res = await api.post('/game/answers', {
+        questionId: selectedQuestion.id,
+        answer: submittedContent
       });
+
+      if (res.isCorrect) {
+        const newTotalPoints = totalPoints + (res.pointsAwarded || 0);
+        setTotalPoints(newTotalPoints);
+
+        const newStages = stages.map((stage) => {
+          const questionIndex = stage.questions.findIndex(
+            (q) => q.number === selectedQuestion.number
+          );
+
+          if (questionIndex !== -1) {
+            const updatedQuestions = [...stage.questions];
+            updatedQuestions[questionIndex] = {
+              ...updatedQuestions[questionIndex],
+              status: 'completed',
+            };
+
+            return {
+              ...stage,
+              questions: updatedQuestions,
+            };
+          }
+
+          if (newTotalPoints >= stage.unlockPoints && stage.questions.every((q) => q.status === 'locked')) {
+            const unlockedQuestions = stage.questions.map((q) => ({
+              ...q,
+              status: 'active',
+            }));
+            return {
+              ...stage,
+              questions: unlockedQuestions,
+            };
+          }
+
+          return stage;
+        });
+
+        setStages(newStages);
+
+        // Notify parent about progress update
+        if (onProgressUpdate) {
+          onProgressUpdate({
+            totalPoints: newTotalPoints,
+            completedQuestions: newStages.flatMap(s => s.questions).filter(q => q.status === 'completed').length,
+            totalQuestions: newStages.flatMap(s => s.questions).length,
+          });
+        }
+        return res;
+      } else {
+        return res;
+      }
+    } catch (e) {
+      console.error("Answer submission failed", e);
+      alert("System interference detected. Failed to authenticate solution.");
+      return { isCorrect: false, error: e.message };
     }
   };
 
@@ -413,6 +429,7 @@ export function HawkinsLabDashboard({ otherTeamProgress, onProgressUpdate, onLog
           title={selectedQuestion.title}
           questionText={selectedQuestion.questionText}
           points={selectedQuestion.points}
+          resourceLink={selectedQuestion.resourceLink}
           isOpen={selectedQuestion !== null}
           onClose={() => setSelectedQuestion(null)}
           onCorrectAnswer={handleCorrectAnswer}

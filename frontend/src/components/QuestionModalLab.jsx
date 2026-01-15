@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, CheckCircle, XCircle, Send } from 'lucide-react';
+import { X, CheckCircle, XCircle, Send, ExternalLink, FileText } from 'lucide-react';
 import { api } from '../api';
 
 export function QuestionModalLab({
@@ -8,14 +8,17 @@ export function QuestionModalLab({
   title,
   questionText,
   points,
+  resourceLink,
   isOpen,
   onClose,
   onCorrectAnswer,
 }) {
   const [answer, setAnswer] = useState('');
+  const [hint, setHint] = useState('');
   const [feedback, setFeedback] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showFeedback, setShowFeedback] = useState(true);
+  const [serverHint, setServerHint] = useState(null);
 
   // Hint Submission State
   const [isSendingHint, setIsSendingHint] = useState(false);
@@ -46,28 +49,36 @@ export function QuestionModalLab({
     setIsSubmitting(true);
 
     try {
-      await onCorrectAnswer(answer);
-      setFeedback('correct');
-      setIsSubmitting(false);
+      const res = await onCorrectAnswer(answer);
+      // onCorrectAnswer now returns the full response object or false
+      if (res && res.isCorrect) {
+        setFeedback('correct');
+        if (res.systemHint) {
+          setServerHint(res.systemHint);
+        }
+      } else {
+        setFeedback('wrong');
+      }
     } catch (e) {
       console.error(e);
       setFeedback('wrong');
+    } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleSendHint = async () => {
-    if (!answer.trim() || isSendingHint) return;
+    if (!hint.trim() || isSendingHint) return;
 
     setIsSendingHint(true);
     try {
       await api.post('/game/hints', {
         questionId: questionId,
-        content: answer.trim()
+        content: hint.trim()
       });
       setHintSuccess(true);
-      // Clear after sending a hint? Usually helpful.
-      setAnswer('');
+      // Clear after sending a hint
+      setHint('');
       setTimeout(() => setHintSuccess(false), 3000);
     } catch (e) {
       console.error("Failed to send hint", e);
@@ -79,6 +90,7 @@ export function QuestionModalLab({
 
   const handleClose = () => {
     setAnswer('');
+    setHint('');
     setFeedback(null);
     onClose();
   };
@@ -184,37 +196,86 @@ export function QuestionModalLab({
             <p className="text-[var(--ash-gray)] leading-relaxed text-lg whitespace-pre-wrap">
               {questionText}
             </p>
+
+            {resourceLink && (
+              <a
+                href={resourceLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-6 flex items-center gap-2 px-4 py-2 bg-[#FFA500]/5 border border-[#FFA500]/30 rounded-md text-[#FFA500] hover:bg-[#FFA500]/10 transition-colors w-fit group font-mono"
+              >
+                <FileText className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                <span className="text-xs font-bold uppercase tracking-wider">Intercept Lab Resources</span>
+                <ExternalLink className="w-3 h-3 opacity-50" />
+              </a>
+            )}
           </div>
 
-          {/* Combined Input Section */}
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-3">
-              <label
-                className="text-sm text-[var(--ash-dim)] uppercase tracking-wide"
-                htmlFor="answer-input"
-              >
-                Secure Terminal Input
-              </label>
-              <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-[#FFA500] animate-pulse" />
-                <span className="text-[10px] font-bold uppercase tracking-widest text-[#FFA500]/60">
-                  Broadcast Mode Active
-                </span>
+          {/* Input Section */}
+          <div className="space-y-6 mb-6">
+            {/* Answer Input */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <label
+                  className="text-sm text-[var(--ash-dim)] uppercase tracking-wide"
+                  htmlFor="answer-input"
+                >
+                  Secure Terminal Solution
+                </label>
+                <div className="flex items-center gap-2">
+                  <div className={`w-1.5 h-1.5 rounded-full ${feedback === 'correct' ? 'bg-green-500' : 'bg-red-500'} animate-pulse`} />
+                  <span className="text-[10px] font-bold uppercase tracking-widest opacity-60">
+                    Auth System: {feedback === 'correct' ? 'DECRYPTED' : 'PENDING'}
+                  </span>
+                </div>
               </div>
+
+              <input
+                id="answer-input"
+                type="text"
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+                disabled={isSubmitting || feedback === 'correct'}
+                className="w-full px-4 py-4 bg-[var(--void-dark)]/60 border-2 rounded-lg text-[var(--ash-gray)] placeholder-[#5A5A5A] focus:outline-none transition-all duration-300 font-mono"
+                placeholder="Enter final security bypass sequence..."
+                style={{
+                  borderColor: feedback === 'correct' ? 'rgba(255, 215, 0, 0.4)' : `${labColor}40`,
+                  boxShadow: 'inset 0 0 20px rgba(0, 0, 0, 0.5)',
+                }}
+              />
             </div>
 
-            <textarea
-              id="answer-input"
-              value={answer}
-              onChange={(e) => setAnswer(e.target.value)}
-              disabled={isSubmitting || isSendingHint}
-              className="w-full h-40 px-4 py-3 bg-[var(--void-dark)]/60 border-2 rounded-lg text-[var(--ash-gray)] placeholder-[#5A5A5A] focus:outline-none transition-all duration-300 resize-none font-mono"
-              placeholder="Enter solution or type a hint for the Upside Down..."
-              style={{
-                borderColor: `${labColor}40`,
-                boxShadow: 'inset 0 0 20px rgba(0, 0, 0, 0.5)',
-              }}
-            />
+            {/* Hint Input */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <label
+                  className="text-sm text-[var(--ash-dim)] uppercase tracking-wide"
+                  htmlFor="hint-input"
+                >
+                  Transmission Broadcast (Hints)
+                </label>
+                <div className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#FFA500] animate-pulse" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#FFA500]/60">
+                    Portal Uplink Stable
+                  </span>
+                </div>
+              </div>
+
+              <textarea
+                id="hint-input"
+                value={hint}
+                onChange={(e) => setHint(e.target.value)}
+                disabled={isSendingHint}
+                className="w-full h-24 px-4 py-3 bg-[var(--void-dark)]/60 border-2 rounded-lg text-[var(--ash-gray)] placeholder-[#5A5A5A] focus:outline-none transition-all duration-300 resize-none font-mono"
+                placeholder="Broadcast observations to the Upside Down team..."
+                style={{
+                  borderColor: `${labColor}40`,
+                  boxShadow: 'inset 0 0 20px rgba(0, 0, 0, 0.5)',
+                }}
+              />
+            </div>
           </div>
 
           {/* Feedback Message */}
@@ -251,6 +312,12 @@ export function QuestionModalLab({
                       ? `Protocol ${questionNumber} completed. Proceed with further data transmissions.`
                       : 'Invalid sequence detected. Re-evaluating...'}
                   </p>
+                  {serverHint && feedback === 'correct' && (
+                    <div className="mt-3 p-3 bg-[#FFA500]/10 border border-[#FFA500]/30 rounded flex flex-col gap-1 animate-pulse">
+                      <span className="text-[10px] uppercase tracking-widest text-[#FFA500] font-bold">Encrypted Intel Recovered:</span>
+                      <p className="text-sm text-[var(--ash-gray)] italic">"{serverHint}"</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -284,16 +351,16 @@ export function QuestionModalLab({
             <div className="relative">
               <button
                 onClick={handleSendHint}
-                disabled={!answer.trim() || isSendingHint}
+                disabled={!hint.trim() || isSendingHint}
                 className="w-full py-3 rounded-lg font-bold uppercase tracking-widest text-xs transition-all duration-300 border-2 flex items-center justify-center gap-2 group"
                 style={{
                   backgroundColor: 'rgba(255, 165, 0, 0.05)',
-                  borderColor: answer.trim() && !isSendingHint ? `${labColor}40` : `${labColor}10`,
-                  color: answer.trim() && !isSendingHint ? labColor : '#5A5A5A',
-                  cursor: (!answer.trim() || isSendingHint) ? 'not-allowed' : 'pointer',
+                  borderColor: hint.trim() && !isSendingHint ? `${labColor}40` : `${labColor}10`,
+                  color: hint.trim() && !isSendingHint ? labColor : '#5A5A5A',
+                  cursor: (!hint.trim() || isSendingHint) ? 'not-allowed' : 'pointer',
                 }}
               >
-                <Send className={`w-3.5 h-3.5 transition-transform duration-300 ${answer.trim() && !isSendingHint ? 'group-hover:translate-x-1 group-hover:-translate-y-1' : ''}`} />
+                <Send className={`w-3.5 h-3.5 transition-transform duration-300 ${hint.trim() && !isSendingHint ? 'group-hover:translate-x-1 group-hover:-translate-y-1' : ''}`} />
                 {isSendingHint ? 'Transmitting...' : 'Transmit Hint to Upside Down'}
               </button>
 

@@ -160,14 +160,14 @@ export function UpsideDownDashboard({ otherTeamProgress, onProgressUpdate, onLog
             totalQuestions: newStages.flatMap(s => s.questions).length,
           });
         }
-        return true; // Success
+        return res; // Success
       } else {
-        return false; // Incorrect
+        return res; // Incorrect or Locked
       }
     } catch (e) {
       console.error("Answer submission failed", e);
       alert("Error submitting answer");
-      return false;
+      return { isCorrect: false, error: e.message };
     }
   };
 
@@ -396,6 +396,8 @@ export function UpsideDownDashboard({ otherTeamProgress, onProgressUpdate, onLog
           title={selectedQuestion.title}
           questionText={selectedQuestion.questionText}
           points={selectedQuestion.points}
+          resourceLink={selectedQuestion.resourceLink}
+          isLocked={selectedQuestion.isLocked}
           isOpen={selectedQuestion !== null}
           onClose={() => setSelectedQuestion(null)}
           onCorrectAnswer={(answer) => handleCorrectAnswer(answer)}
